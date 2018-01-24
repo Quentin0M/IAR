@@ -102,8 +102,22 @@ time_table = AC()
 ##plt.plot(range(200), time_table)
 ##plt.show()
 
+
+## Hierarchic RL
+
+V = np.zeros(used_grid.shape)
+W = np.zeros(tuple(list(used_grid.shape)+[8]))
+
+# returns a cumulated vector of P(0) to P(7) to facilitate the selection
+def Po():
+    global tau, Wo, posxo, posyo
+    p = [np.exp(W[posx,posy,a]/tau)/sum([np.exp(W[posx,posy,ap]/tau)for ap in range(16)]) for a in range(16)]
+    for a in range(1,8):
+        p[a]+=p[a-1]
+    return p
+
 def HRL():
-    global deltao, used_grid, gammao, alphaCo, alphaAo, posxo, posyo, Vo, Wo
+    global deltao, used_grid, gammao, alphaC, alphaA, posxo, posyo, Vo, Wo
     time_table=np.zeros(200)
     for episode in range(200):
         posx=1
