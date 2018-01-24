@@ -92,58 +92,159 @@ def AC():
             W[posx,posy,a] += alphaA * delta 
             posx,posy = T(a) 
             t += 1
-            print a
-            print 'temps='+str(t)+" position = ("+str(posx)+','+str(posy)
+            #print a
+            #print 'temps='+str(t)+" position = ("+str(posx)+','+str(posy)
         print "arrivé à "+str(episode)
         time_table[episode] = t
     return time_table
 
-time_table = AC()
+#time_table = AC()
 ##plt.plot(range(200), time_table)
 ##plt.show()
 
 
 ## Hierarchic RL
 
-V = np.zeros(used_grid.shape)
-W = np.zeros(tuple(list(used_grid.shape)+[8]))
+Vo = np.zeros(used_grid.shape)
+# The weight of the options at a given location
+WO = np.zeros(tuple(list(used_grid.shape)+[16]))
+# the weight of the primitive options given the current abstract option and location
+Wo = np.zeros(tuple([8]+list(used_grid.shape)+[8]))
+# current active option (-1 means no option is selected)
+current_option = -1
+
+training = True
+
+posxo = 1
+posyo = 11
+
+def available_options():
+    global posxo,posyo
+    if posxo < 6 and posyo < 6:
+        return [0,1,2,3,4,5,6,7,8,9]
+    if posxo < 7 and posyo > 6:
+        return [0,1,2,3,4,5,6,7,10,11]
+    if posxo > 7 and posyo > 6:
+        return [0,1,2,3,4,5,6,7,12,13]
+    if posxo > 6 and posyo < 6:
+        return [0,1,2,3,4,5,6,7,14,15]
+    # the robot is inside a door and must leave it with a primitive option
+    return [0,1,2,3,4,5,6,7]
+
+def option_target():
+    global current_option
+    if current_option == 0: return 3,6
+    if current_option == 1: return 6,2
+    if current_option == 2: return 3,6
+    if current_option == 3: return 7,9
+    if current_option == 4: return 7,9
+    if current_option == 5: return 10,6
+    if current_option == 6: return 10,6
+    if current_option == 7: return 6,2
+
+def Ro(a):
+    global posxo,posyo,used_grid
+    if current_option == -1:
+        x,y=T(a)
+        if used_grid[x,y] == 2 and not training:
+            return 100
+        else:
+            return 0
+    else:
+        if (posxo,posyo)==(option_target()):
+            return 100
+        return 0
 
 # returns a cumulated vector of P(0) to P(7) to facilitate the selection
 def Po():
-    global tau, Wo, posxo, posyo
-    p = [np.exp(W[posx,posy,a]/tau)/sum([np.exp(W[posx,posy,ap]/tau)for ap in range(16)]) for a in range(16)]
-    for a in range(1,8):
+    
+    global tau, Wo, posxo, posyo, current_option, WO
+    if current_option == -1:
+        o = available_options()
+        p = [np.exp(WO[posxo,posyo,a]/tau)/sum([np.exp(WO[posxo,posyo,ap]/tau)for ap in o]) for a in o]
+        for a in range(len(o)):
+            p[a]+=p[a-1]
+        return p
+    p = [np.exp(Wo[current_option][posxo,posyo,a]/tau)/sum([np.exp(Wo[current_option][posxo,posyo,ap]/tau)for ap in range(8)]) for a in range(8)]
+    p = np.asarray(p)
+    for a in range(8):
         p[a]+=p[a-1]
     return p
 
+def execute_option():
+    global deltao, used_grid, gammao, alphaC, alphaA, posxo, posyo, Vo, Wo, current_option
+    t = 0
+    d=0
+    rcum=0
+    while (posxo,posyo) != (option_target()):
+        p = Po()
+        choice = np.random.uniform()
+        a=0
+        while choice>p[a]:
+            a += 1
+        x,y=T(a)
+        reward = Ro(a)
+        rcum+=reward
+        d = Ro(a) + gamma*Vo[x,y] - Vo[posxo,posyo]
+        Vo[posxo,posyo] += alphaC * d
+        Wo[current_option][posxo,posyo,a] += alphaA * d 
+        posxo,posyo = x,y 
+        t += 1
+    return rcum,t
+
 def HRL():
-    global deltao, used_grid, gammao, alphaC, alphaA, posxo, posyo, Vo, Wo
+    global deltao, used_grid, gammao, alphaC, alphaA, posxo, posyo, Vo, Wo, WO, training, current_option
     time_table=np.zeros(200)
+    cpt = 0
     for episode in range(200):
         posx=1
         posy=11
         t=0
-        while used_grid[posx,posy] != 2:# and t<1000:
+        while used_grid[posxo,posyo] != 2 or training:# and t<1000:
             #print W[posx,posy]
+            o = available_options()
             p = Po()
             choice = np.random.uniform()
             a=0
             while choice>p[a]:
                 a += 1
-            update_delta(a)
-##            if V[posx,posy] == 0 :
-##                V[posx,posy] = t-1000 
-            V[posx,posy] += alphaC * delta
-            W[posx,posy,a] += alphaA * delta 
-            posx,posy = T(a) 
-            t += 1
-            print a
-            print 'temps='+str(t)+" position = ("+str(posx)+','+str(posy)
-        print "arrivé à "+str(episode)
+            if a > 7:
+                current_option = a - 8
+                xinit,yinit = posxo,posyo
+                rcum,ttot = execute_option()
+                deltao = rcum + gamma**ttot * Vo[posxo,posyo] - Vo[xinit,yinit]
+                Vo[xinit,yinit] += alphaC*deltao
+                WO[xinit,yinit,current_option+8] += alphaA+deltao
+                t += ttot
+                current_option = -1
+            else:
+                x,y=T(a)
+                deltao = Ro(a) + gamma * Vo[posxo,posyo] - Vo[x,y]
+                Vo[posxo,posyo] += alphaC * deltao
+                WO[posx,posy,a] += alphaA * deltao 
+                posx,posy = T(a) 
+                t += 1
+            if training:
+                cpt +=1
+                if cpt > 50000:
+                    print "Training fini"
+                    t=0
+                    training = False
         time_table[episode] = t
     return time_table
 
+time_HRL = HRL()
+plt.plot(range(200), time_HRL, label = 'with options')
+time_RL = AC()
+plt.plot(range(200, time_RL, label = 'without_option'
+plt.show()
+
+used_grid = grille3
+time_HRL = HRL()
+plt.plot(range(200), time_HRL, label = 'with options')
+time_RL = AC()
+plt.plot(range(200, time_RL, label = 'without_option'
+plt.show()
 
 
-
-
+plt.show()
