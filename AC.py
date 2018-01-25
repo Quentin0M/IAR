@@ -196,10 +196,11 @@ def HRL():
     global deltao, used_grid, gammao, alphaC, alphaA, posxo, posyo, Vo, Wo, WO, training, current_option
     time_table=np.zeros(200)
     cpt = 0
-    for episode in range(200):
+    for episode in range(201):
         posx=1
         posy=11
         t=0
+        print "episode "+str(episode)
         while used_grid[posxo,posyo] != 2 or training:# and t<1000:
             #print W[posx,posy]
             o = available_options()
@@ -225,26 +226,30 @@ def HRL():
                 posx,posy = T(a) 
                 t += 1
             if training:
-                cpt +=1
+                cpt =t
+                print "Training : "+str(cpt)
                 if cpt > 50000:
                     print "Training fini"
                     t=0
                     training = False
-        time_table[episode] = t
+                    break
+                
+        if not training: time_table[episode-1] = t
     return time_table
 
+time_RL = AC()
 time_HRL = HRL()
 plt.plot(range(200), time_HRL, label = 'with options')
-time_RL = AC()
-plt.plot(range(200, time_RL, label = 'without_option'
+plt.plot(range(200), time_RL, label = 'without_option')
+plt.legend(["with options","without options"])
 plt.show()
 
 used_grid = grille3
 time_HRL = HRL()
 plt.plot(range(200), time_HRL, label = 'with options')
 time_RL = AC()
-plt.plot(range(200, time_RL, label = 'without_option'
+plt.plot(range(200), time_RL, label = 'without_option')
 plt.show()
 
 
-plt.show()
+
