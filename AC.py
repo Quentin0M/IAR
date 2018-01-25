@@ -113,7 +113,7 @@ Wo = np.zeros(tuple([8]+list(used_grid.shape)+[8]))
 # current active option (-1 means no option is selected)
 current_option = -1
 
-training = True
+training = False
 
 posxo = 1
 posyo = 11
@@ -151,9 +151,10 @@ def Ro(a):
         else:
             return 0
     else:
-        if (posxo,posyo)==(option_target()):
+        x,y=T(a)
+        if (x,y)==(option_target()):
             return 100
-        return 0
+        return -1
 
 # returns a cumulated vector of P(0) to P(7) to facilitate the selection
 def Po():
@@ -162,33 +163,33 @@ def Po():
     if current_option == -1:
         o = available_options()
         p = [np.exp(WO[posxo,posyo,a]/tau)/sum([np.exp(WO[posxo,posyo,ap]/tau)for ap in o]) for a in o]
-        for a in range(len(o)):
+        for a in range(1,len(o)):
             p[a]+=p[a-1]
         return p
     p = [np.exp(Wo[current_option][posxo,posyo,a]/tau)/sum([np.exp(Wo[current_option][posxo,posyo,ap]/tau)for ap in range(8)]) for a in range(8)]
-    p = np.asarray(p)
-    for a in range(8):
+    for a in range(1,8):
         p[a]+=p[a-1]
     return p
 
 def execute_option():
-    global deltao, used_grid, gammao, alphaC, alphaA, posxo, posyo, Vo, Wo, current_option
+    global deltao, used_grid, gamma, alphaC, alphaA, posxo, posyo, Vo, Wo, current_option
     t = 0
     d=0
     rcum=0
     while (posxo,posyo) != (option_target()):
         p = Po()
-        choice = np.random.uniform()
+        choice = np.random.random()
         a=0
         while choice>p[a]:
             a += 1
         x,y=T(a)
         reward = Ro(a)
         rcum+=reward
-        d = Ro(a) + gamma*Vo[x,y] - Vo[posxo,posyo]
+        d = reward + gamma*Vo[x,y] - Vo[posxo,posyo]
         Vo[posxo,posyo] += alphaC * d
         Wo[current_option][posxo,posyo,a] += alphaA * d 
-        posxo,posyo = x,y 
+        posxo,posyo = x,y
+        print [a,x,y]
         t += 1
     return rcum,t
 
@@ -210,7 +211,7 @@ def HRL():
             while choice>p[a]:
                 a += 1
             if a > 7:
-                current_option = a - 8
+                current_option = o[a] - 8
                 xinit,yinit = posxo,posyo
                 rcum,ttot = execute_option()
                 deltao = rcum + gamma**ttot * Vo[posxo,posyo] - Vo[xinit,yinit]
@@ -237,7 +238,7 @@ def HRL():
         if not training: time_table[episode-1] = t
     return time_table
 
-time_RL = AC()
+#time_RL = AC()
 time_HRL = HRL()
 plt.plot(range(200), time_HRL, label = 'with options')
 plt.plot(range(200), time_RL, label = 'without_option')
